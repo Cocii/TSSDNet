@@ -1,2 +1,4 @@
 __pycache__/
 pretrained/
+trained_models/
+trained_models/train_log/

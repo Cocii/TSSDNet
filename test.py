@@ -1,6 +1,6 @@
 import torch
 from torch.utils.data.dataloader import DataLoader
-from data import PrepASV15Dataset, PrepASV19Dataset
+from data import PrepASV15Dataset, PrepASV19Dataset, PreDataset
 import models
 import torch.nn.functional as F
 import matplotlib.pyplot as plt
@@ -16,10 +16,12 @@ def asv_cal_accuracies(protocol, path_data, net, device, data_type='time_frame',
 
         if dataset == 15:
             test_set = PrepASV15Dataset(protocol, path_data, data_type=data_type)
-        else:
+        elif dataset == 19:
             test_set = PrepASV19Dataset(protocol, path_data, data_type=data_type)
+        else:
+            test_set = PreDataset(protocol, path_data, data_type=data_type)
 
-        test_loader = DataLoader(test_set, batch_size=64, shuffle=False, num_workers=4)
+        test_loader = DataLoader(test_set, batch_size=64, shuffle=False, num_workers=4, collate_fn=test_set.collate_fn)
 
         for test_batch in test_loader:
             # load batch and infer
@@ -37,6 +39,7 @@ def asv_cal_accuracies(protocol, path_data, net, device, data_type='time_frame',
             num_files += len(test_label)
             test_sample = test_sample.to(device)
             test_label = test_label.to(device)
+            test_sample = test_sample.unsqueeze(1)
             infer = net(test_sample)
 
             # obtain output probabilities

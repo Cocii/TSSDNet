@@ -2,7 +2,7 @@ import torch
 import torch.nn.functional as F
 from torch.utils.data.dataloader import DataLoader
 import torch.optim as optim
-from data import PrepASV19Dataset, PrepASV15Dataset
+from data import PrepASV19Dataset, PrepASV15Dataset, PreDataset
 import models
 from test import asv_cal_accuracies, cal_roc_eer
 import os
@@ -11,13 +11,16 @@ import time
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
+import glob
+import random
+from tqdm import tqdm
 
 if __name__ == '__main__':
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
     # TODO: Define dataset scope and data type
     # specify the data type and root path
-    dataset = 19   # {'ASVspoof2019': 19, 'ASVspoof2015': 15}
+    dataset = 0   # {'ASVspoof2019': 19, 'ASVspoof2015': 15, 'custom': 0}
     data_type = 'time_frame'  # {'time_frame', 'CQT'}
 
     if not os.path.exists('./trained_models/'):
@@ -32,7 +35,7 @@ if __name__ == '__main__':
             train_data_path = root_path + 'data/train_6/'
             dev_data_path = root_path + 'data/dev_6/'
             eval_data_path = root_path + 'data/eval_6/'
-        else:
+        elif dataset == 19:
             root_path = 'F:/ASVspoof2019/LA/'
             train_protocol_file_path = root_path + 'ASVspoof2019_LA_cm_protocols/ASVspoof2019.LA.cm.train.trn.txt'
             dev_protocol_file_path = root_path + 'ASVspoof2019_LA_cm_protocols/ASVspoof2019.LA.cm.dev.trl.txt'
@@ -40,6 +43,26 @@ if __name__ == '__main__':
             train_data_path = root_path + 'data/train_6/'
             dev_data_path   = root_path + 'data/dev_6/'
             eval_data_path  = root_path + 'data/eval_6/'
+        else:
+            path_data = "/workspace/BigVGAN/BigVGAN/LibriTTS_pair/"
+            real_audio_paths = glob.glob(os.path.join(os.path.join(path_data, 'real_audios'), "*.wav"))
+            fake_audio_paths = glob.glob(os.path.join(os.path.join(path_data, 'fake_audios'), "*.wav"))
+            audios_paths = real_audio_paths + fake_audio_paths
+            random.shuffle(audios_paths)
+            ratios = [0.9, 0.05, 0.05]
+            sizes = [int(len(audios_paths) * ratio) for ratio in ratios]
+
+            splits = []
+            start = 0
+            for size in sizes[:-1]:
+                splits.append(audios_paths[start:start+size])
+                start += size
+            splits.append(audios_paths[start:])
+            # train_list, valid_list, test_list
+            train_protocol_file_path, dev_protocol_file_path, eval_protocol_file_path = splits
+            train_data_path = path_data
+            eval_data_path = path_data
+            dev_data_path = path_data
 
     elif data_type == 'CQT':
         if dataset == 15:
@@ -50,7 +73,7 @@ if __name__ == '__main__':
             train_data_path = root_path + 'data/train_6.4_cqt/'
             dev_data_path = root_path + 'data/dev_6.4_cqt/'
             eval_data_path = root_path + 'data/eval_6.4_cqt/'
-        else:
+        elif dataset == 19:
             root_path = 'F:/ASVspoof2019/LA/'
             train_protocol_file_path = root_path + 'ASVspoof2019_LA_cm_protocols/ASVspoof2019.LA.cm.train.trn.txt'
             dev_protocol_file_path   = root_path + 'ASVspoof2019_LA_cm_protocols/ASVspoof2019.LA.cm.dev.trl.txt'
@@ -58,6 +81,27 @@ if __name__ == '__main__':
             train_data_path = root_path + 'data/train_6.4_cqt/'
             dev_data_path   = root_path + 'data/dev_6.4_cqt/'
             eval_data_path  = root_path + 'data/eval_6.4_cqt/'
+        else:
+            path_data = "/workspace/BigVGAN/BigVGAN/LibriTTS_pair/"
+            real_audio_paths = glob.glob(os.path.join(os.path.join(path_data, 'real_audios'), "*.wav"))
+            fake_audio_paths = glob.glob(os.path.join(os.path.join(path_data, 'fake_audios'), "*.wav"))
+            audios_paths = real_audio_paths + fake_audio_paths
+            random.shuffle(audios_paths)
+            ratios = [0.9, 0.05, 0.05]
+            sizes = [int(len(audios_paths) * ratio) for ratio in ratios]
+
+            splits = []
+            start = 0
+            for size in sizes[:-1]:
+                splits.append(audios_paths[start:start+size])
+                start += size
+            splits.append(audios_paths[start:])
+            # train_list, valid_list, test_list
+            train_protocol_file_path, dev_protocol_file_path, eval_protocol_file_path = splits
+            train_data_path = path_data
+            eval_data_path = path_data
+            dev_data_path = path_data
+
     else:
         print("Program only supports 'time_frame' and 'CQT' data types.")
         sys.exit()
@@ -65,10 +109,13 @@ if __name__ == '__main__':
     # TODO: Prepare data and set training parameters
     if dataset == 15:
         train_set = PrepASV15Dataset(train_protocol_file_path, train_data_path, data_type=data_type)
-    else:
+    elif dataset == 19:
         train_set = PrepASV19Dataset(train_protocol_file_path, train_data_path, data_type=data_type)
+    else: 
+        # train_protocol_file_path: training data information text path, train_data_path: audios path
+        train_set = PreDataset(train_protocol_file_path, path_data, data_type=data_type)
     weights = train_set.get_weights().to(device)  # weight used for WCE
-    train_loader = DataLoader(train_set, batch_size=32, shuffle=True, num_workers=4)
+    train_loader = DataLoader(train_set, batch_size=32, shuffle=True, num_workers=32, collate_fn=train_set.collate_fn)
 
     if data_type == 'CQT':
         Net = models.SSDNet2D()  # 2D-Res-TSSDNet
@@ -82,7 +129,7 @@ if __name__ == '__main__':
 
     optimizer = optim.Adam(Net.parameters(), lr=0.001)
     scheduler = optim.lr_scheduler.ExponentialLR(optimizer, gamma=0.95)
-    loss_type = 'WCE'  # {'WCE', 'mixup'}
+    loss_type = 'mixup'  # {'WCE', 'mixup'}
 
     # TODO: Training
     print('Training data: {}, Date type: {}. Training started...'.format(train_data_path, data_type))
@@ -106,13 +153,14 @@ if __name__ == '__main__':
         t = time.time()
         total_loss = 0
         counter = 0
-        for batch in train_loader:
+        print("Epoch: ", epoch)
+        for batch in tqdm(train_loader):
             counter += 1
             # forward
             samples, labels, _ = batch
             samples = samples.to(device)
             labels = labels.to(device)
-
+            samples = samples.unsqueeze(1)
             optimizer.zero_grad()
 
             if loss_type == 'mixup':
@@ -148,9 +196,11 @@ if __name__ == '__main__':
         else:
             e_eer = .99
             eval_accuracy = 0.00
-
-        net_str = data_type + '_' + str(epoch) + '_' + 'ASVspoof20' + str(dataset) + '_LA_Loss_' + str(round(total_loss / counter, 4)) + '_dEER_' \
-                            + str(round(d_eer * 100, 2)) + '%_eEER_' + str(round(e_eer * 100, 2)) + '%.pth'
+        if dataset == 0:
+            net_str = "tssdnet_" + str(epoch)
+        else:
+            net_str = data_type + '_' + str(epoch) + '_' + 'ASVspoof20' + str(dataset) + '_LA_Loss_' + str(round(total_loss / counter, 4)) + '_dEER_' \
+                                + str(round(d_eer * 100, 2)) + '%_eEER_' + str(round(e_eer * 100, 2)) + '%.pth'
         torch.save({'epoch': epoch, 'model_state_dict': Net.state_dict(),
                     'optimizer_state_dict': optimizer.state_dict(),
                     'scheduler_state_dict': scheduler.state_dict(),

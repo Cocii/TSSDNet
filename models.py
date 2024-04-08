@@ -85,8 +85,8 @@ class SSDNet1D(nn.Module):  # Res-TSSDNet
         x = self.RSM3(x)
         x = F.max_pool1d(x, kernel_size=4)
         x = self.RSM4(x)
-        # x = F.max_pool1d(x, kernel_size=x.shape[-1])
-        x = F.max_pool1d(x, kernel_size=375)
+        x = F.max_pool1d(x, kernel_size=x.shape[-1])
+        # x = F.max_pool1d(x, kernel_size=375)
 
         x = torch.flatten(x, start_dim=1)
         x = F.relu(self.fc1(x))
